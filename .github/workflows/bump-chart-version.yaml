@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Automatically bumps Chart.yaml (version + appVersion) whenever the HedgeDoc
+# image tag in values.yaml is updated — typically by a Renovate PR branch push.
+#
+# Trigger:
+#   • Push to any branch when charts/hedgedoc/values.yaml changes.
+#   • Skipped on pushes that only touch Chart.yaml (prevents a re-trigger loop).
+#
+# What it does:
+#   1. Reads image.tag from values.yaml.
+#   2. Compares it against the current appVersion in Chart.yaml.
+#   3. If they differ, runs bump-chart-version.sh and commits Chart.yaml back
+#      to the same branch.
+#
+# Required permissions:
+#   contents: write  — commit Chart.yaml back to the branch
+# ─────────────────────────────────────────────────────────────────────────────
+name: 🔖 Bump chart version on image update
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - "charts/hedgedoc/values.yaml"
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Bump Chart.yaml
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          # Use a token with write access so the commit can be pushed back.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      # ── Read image tag from values.yaml ──────────────────────────────────────
+      - name: Extract image tag from values.yaml
+        id: image
+        run: |
+          TAG=$(grep -A1 'repository: quay.io/hedgedoc/hedgedoc' \
+            charts/hedgedoc/values.yaml \
+            | grep 'tag:' \
+            | awk '{print $2}' \
+            | tr -d '"'"'')
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Detected image tag: ${TAG}"
+
+      # ── Compare against current appVersion ───────────────────────────────────
+      - name: Check if bump is needed
+        id: check
+        run: |
+          CURRENT_APP_VERSION=$(grep '^appVersion:' charts/hedgedoc/Chart.yaml \
+            | awk '{print $2}' | tr -d '"')
+          echo "appVersion in Chart.yaml : ${CURRENT_APP_VERSION}"
+          echo "image.tag in values.yaml : ${{ steps.image.outputs.tag }}"
+          if [[ "${CURRENT_APP_VERSION}" == "${{ steps.image.outputs.tag }}" ]]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Chart.yaml is already up to date — skipping."
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Run bump script ──────────────────────────────────────────────────────
+      - name: Bump Chart.yaml
+        if: steps.check.outputs.needed == 'true'
+        run: bash .github/scripts/bump-chart-version.sh "${{ steps.image.outputs.tag }}"
+
+      # ── Commit and push ──────────────────────────────────────────────────────
+      - name: Commit updated Chart.yaml
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add charts/hedgedoc/Chart.yaml
+          git commit -m "chore(chart): bump chart version for hedgedoc ${{ steps.image.outputs.tag }}"
+          git push
