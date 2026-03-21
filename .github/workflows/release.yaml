@@ -123,7 +123,12 @@ jobs:
           helm repo update
 
       - name: Update chart dependencies
-        run: helm dependency update charts/hedgedoc
+        run: |
+          helm dependency update charts/hedgedoc
+          # helm install requires extracted directories, not .tgz archives.
+          find charts/hedgedoc/charts -maxdepth 1 -name '*.tgz' | while read -r f; do
+            tar -xzf "${f}" -C "$(dirname "${f}")" && rm "${f}"
+          done
 
       # ── Install ─────────────────────────────────────────────────────────────
       # We install into a dedicated namespace with:
@@ -253,7 +258,12 @@ jobs:
           helm repo update
 
       - name: Update chart dependencies
-        run: helm dependency update charts/hedgedoc
+        run: |
+          helm dependency update charts/hedgedoc
+          # helm package requires extracted directories, not .tgz archives.
+          find charts/hedgedoc/charts -maxdepth 1 -name '*.tgz' | while read -r f; do
+            tar -xzf "${f}" -C "$(dirname "${f}")" && rm "${f}"
+          done
 
       # ── Extract metadata ─────────────────────────────────────────────────────
       - name: Read chart metadata
