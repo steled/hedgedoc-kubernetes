@@ -111,7 +111,7 @@ jobs:
       # kind (Kubernetes IN Docker) — creates a real single-node cluster
       # inside the runner using Docker. No cloud credentials needed.
       - name: Create kind cluster
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.14.0
         with:
           cluster_name: hedgedoc-ci
           # Use a recent stable Kubernetes version.
