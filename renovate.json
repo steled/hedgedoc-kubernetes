@@ -36,16 +36,7 @@
       "matchManagers": ["custom.regex"],
       "matchPackageNames": ["quay.io/hedgedoc/hedgedoc"],
       "groupName": "hedgedoc image",
-      "commitMessageTopic": "hedgedoc image to {{newVersion}}",
-      "postUpgradeTasks": {
-        "commands": [
-          "bash .github/scripts/bump-chart-version.sh {{{newVersion}}}"
-        ],
-        "fileFilters": [
-          "charts/hedgedoc/Chart.yaml"
-        ],
-        "executionMode": "branch"
-      }
+      "commitMessageTopic": "hedgedoc image to {{newVersion}}"
     },
 
     {
@@ -53,18 +44,7 @@
       "matchPackageNames": ["postgresql"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "bitnami/postgresql sub-chart",
-      "automerge": false,
-      "postUpgradeTasks": {
-        "commands": [
-          "helm repo add bitnami https://charts.bitnami.com/bitnami",
-          "helm repo update",
-          "helm dependency update charts/hedgedoc"
-        ],
-        "fileFilters": [
-          "charts/hedgedoc/Chart.lock"
-        ],
-        "executionMode": "branch"
-      }
+      "automerge": false
     },
 
     {
