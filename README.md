@@ -157,6 +157,31 @@ helm install hedgedoc \
   -f my-values.yaml
 ```
 
+## Local Development
+
+Dependencies are **not vendored** in the repository. Before running any Helm
+command locally, fetch them first:
+
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+helm dependency update charts/hedgedoc
+```
+
+The downloaded artifacts (`charts/hedgedoc/charts/`) are gitignored. Lint and
+template rendering then work as normal:
+
+```bash
+# Lint
+helm lint charts/hedgedoc --strict \
+  --set postgresql.auth.password="local-test"
+
+# Dry-run template rendering
+helm template hedgedoc charts/hedgedoc \
+  --set postgresql.auth.password="local-test" \
+  > /dev/null
+```
+
 ## CI/CD
 
 The GitHub Actions workflow (`.github/workflows/release.yaml`) runs on every
@@ -164,8 +189,9 @@ push to `main` that touches `charts/**`:
 
 1. `helm dependency update`
 2. `helm lint --strict`
-3. `helm package`
-4. `helm push` → `oci://ghcr.io/<owner>/hedgedoc:<chart-version>`
+3. `helm template` (dry-run)
+4. `kind` cluster smoke test (`helm install --wait`)
+5. `helm package` + `helm push` → `oci://ghcr.io/<owner>/hedgedoc:<chart-version>`
 
 No external secrets or tokens are needed — `GITHUB_TOKEN` (auto-provisioned)
 has `packages: write` permission.
