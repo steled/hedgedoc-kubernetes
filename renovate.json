@@ -17,7 +17,6 @@
 
   "customManagers": [
     {
-      "_comment": "Detect Docker image updates in Helm values.yaml files. Matches the two-line `repository: / tag:` pattern used by this chart.",
       "customType": "regex",
       "fileMatch": ["^charts/[^/]+/values\\.yaml$"],
       "matchStrings": [
@@ -30,7 +29,6 @@
 
   "packageRules": [
     {
-      "_comment": "Group HedgeDoc image updates. After bumping the image tag, run the chart version bump script so Chart.yaml stays in sync.",
       "matchManagers": ["custom.regex"],
       "matchPackageNames": ["quay.io/hedgedoc/hedgedoc"],
       "groupName": "hedgedoc image",
@@ -47,7 +45,6 @@
     },
 
     {
-      "_comment": "Keep bitnami/postgresql sub-chart updates separate and non-major by default. postUpgradeTasks regenerates Chart.lock so the pinned digest stays in sync with the new version.",
       "matchManagers": ["helmv3"],
       "matchPackageNames": ["postgresql"],
       "matchUpdateTypes": ["minor", "patch"],
@@ -67,7 +64,6 @@
     },
 
     {
-      "_comment": "Pin major Helm dependency upgrades for manual review.",
       "matchManagers": ["helmv3"],
       "matchUpdateTypes": ["major"],
       "labels": ["renovate", "dependencies", "breaking-change"],
@@ -75,7 +71,6 @@
     },
 
     {
-      "_comment": "Auto-merge patch updates to GitHub Actions.",
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["patch"],
       "automerge": true,
