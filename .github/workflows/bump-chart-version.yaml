@@ -44,9 +44,7 @@ jobs:
       - name: Extract image tag from values.yaml
         id: image
         run: |
-          TAG=$(grep -A1 'repository: quay.io/hedgedoc/hedgedoc' \
-            charts/hedgedoc/values.yaml \
-            | grep 'tag:' \
+          TAG=$(grep '^\s*tag:' charts/hedgedoc/values.yaml \
             | awk '{print $2}' \
             | tr -d '"')
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
