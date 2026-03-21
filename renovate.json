@@ -1,0 +1,74 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "github>steled/renovate-config"
+  ],
+
+  "timezone": "Europe/Berlin",
+
+  "labels": ["renovate", "dependencies"],
+
+  "helmv3": {
+    "fileMatch": ["^charts/[^/]+/Chart\\.yaml$"]
+  },
+
+  "customManagers": [
+    {
+      "_comment": "Detect Docker image updates in Helm values.yaml files. Matches the two-line `repository: / tag:` pattern used by this chart.",
+      "customType": "regex",
+      "fileMatch": ["^charts/[^/]+/values\\.yaml$"],
+      "matchStrings": [
+        "repository:\\s*(?<depName>[^\\s#]+)\\n[^\\n]*?tag:\\s*[\"']?(?<currentValue>[^\"'\\s#\\n]+)[\"']?"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ],
+
+  "packageRules": [
+    {
+      "_comment": "Group HedgeDoc image updates. After bumping the image tag, run the chart version bump script so Chart.yaml stays in sync.",
+      "matchManagers": ["custom.regex"],
+      "matchPackageNames": ["quay.io/hedgedoc/hedgedoc"],
+      "groupName": "hedgedoc image",
+      "commitMessageTopic": "hedgedoc image to {{newVersion}}",
+      "postUpgradeTasks": {
+        "commands": [
+          "bash .github/scripts/bump-chart-version.sh {{{newVersion}}}"
+        ],
+        "fileFilters": [
+          "charts/hedgedoc/Chart.yaml"
+        ],
+        "executionMode": "branch"
+      }
+    },
+
+    {
+      "_comment": "Keep bitnami/postgresql sub-chart updates separate and non-major by default.",
+      "matchManagers": ["helmv3"],
+      "matchPackageNames": ["postgresql"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "bitnami/postgresql sub-chart",
+      "automerge": false
+    },
+
+    {
+      "_comment": "Pin major Helm dependency upgrades for manual review.",
+      "matchManagers": ["helmv3"],
+      "matchUpdateTypes": ["major"],
+      "labels": ["renovate", "dependencies", "breaking-change"],
+      "automerge": false
+    },
+
+    {
+      "_comment": "Auto-merge patch updates to GitHub Actions.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr"
+    }
+  ]
+}

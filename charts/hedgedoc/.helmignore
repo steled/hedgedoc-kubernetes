@@ -1,0 +1,30 @@
+# File: hedgedoc-kubernetes/charts/hedgedoc/.helmignore
+# Patterns to exclude from the packaged chart archive.
+# See https://helm.sh/docs/chart_best_practices/conventions/#the-helmignore-file
+
+# Common VCS directories
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.circleci/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Helm test artifacts
+*.tgz
+
+# Local overrides
+*.local.yaml
+*.local.values.yaml

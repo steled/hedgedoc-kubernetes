@@ -1,0 +1,35 @@
+# File: hedgedoc-kubernetes/charts/hedgedoc/Chart.yaml
+apiVersion: v2
+name: hedgedoc
+description: >-
+  A Helm chart for HedgeDoc — the open platform for real-time collaborative
+  markdown notes. Supports PostgreSQL (internal or external), S3-compatible
+  uploads, standard Ingress and Gateway API (Istio/Gateway API) networking.
+type: application
+
+# -- Chart version. Bumped automatically by Renovate via bump-chart-version.sh.
+version: 0.1.0
+
+# -- HedgeDoc application version. Mirrors image.tag in values.yaml.
+appVersion: "1.9.9"
+
+keywords:
+  - hedgedoc
+  - markdown
+  - collaborative
+  - notes
+  - wiki
+
+home: https://hedgedoc.org
+sources:
+  - https://github.com/hedgedoc/hedgedoc
+icon: https://docs.hedgedoc.org/images/hedgedoc_logo.svg
+
+maintainers:
+  - name: hedgedoc-kubernetes
+
+dependencies:
+  - name: postgresql
+    version: "16.2.1"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled

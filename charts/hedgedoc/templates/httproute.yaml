@@ -1,0 +1,23 @@
+{{- if .Values.gatewayApi.enabled -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "hedgedoc.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hedgedoc.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    {{- toYaml .Values.gatewayApi.parentRefs | nindent 4 }}
+  hostnames:
+    - {{ .Values.gatewayApi.hostname | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "hedgedoc.fullname" . }}
+          port: {{ .Values.service.port }}
+          weight: 100
+{{- end }}

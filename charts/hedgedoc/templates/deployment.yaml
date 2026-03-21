@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hedgedoc.fullname" . }}
+  labels:
+    {{- include "hedgedoc.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "hedgedoc.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- /*
+          Trigger a rolling restart whenever the managed ConfigMap changes.
+          Skipped when existingConfigMap is used (we don't own that resource).
+        */}}
+        {{- if not .Values.existingConfigMap }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "hedgedoc.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "hedgedoc.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      {{- /*
+        Determine whether to mount the uploads PVC.
+        The PVC mount is skipped automatically when CMD_IMAGE_UPLOAD_TYPE is "s3"
+        (or any non-filesystem backend) because uploads are delegated to object storage.
+      */}}
+      {{- $uploadType   := index .Values.extraEnv "CMD_IMAGE_UPLOAD_TYPE" | default "filesystem" }}
+      {{- $mountUploads := and .Values.persistence.enabled (ne $uploadType "s3") }}
+
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+
+          # Inject all environment variables via envFrom for a lean Deployment spec.
+          # Non-sensitive config from ConfigMap; credentials from Secret.
+          envFrom:
+            - configMapRef:
+                name: {{ include "hedgedoc.configMapName" . }}
+            - secretRef:
+                name: {{ include "hedgedoc.secretName" . }}
+
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+
+          # ── Probes ────────────────────────────────────────────────────────
+          # startupProbe fires first and blocks liveness until HedgeDoc
+          # (and its DB connection) is fully initialised.
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          {{- if $mountUploads }}
+          volumeMounts:
+            - name: uploads
+              mountPath: /hedgedoc/public/uploads
+          {{- end }}
+
+      {{- if $mountUploads }}
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: {{ include "hedgedoc.fullname" . }}-uploads
+      {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

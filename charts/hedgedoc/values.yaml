@@ -1,0 +1,295 @@
+# File: hedgedoc-kubernetes/charts/hedgedoc/values.yaml
+
+# -- Number of HedgeDoc replicas.
+# NOTE: HedgeDoc 1.x does not natively support horizontal scaling without a
+# shared session store (e.g. Redis). Keep this at 1 unless you externalize sessions.
+replicaCount: 1
+
+image:
+  # -- Container image repository. Renovate tracks updates to this field.
+  repository: quay.io/hedgedoc/hedgedoc
+  # -- Image tag. Pinned for reproducibility. Must be a valid semver tag.
+  tag: "1.9.9"
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets for private registries.
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Whether to create a dedicated ServiceAccount for the pod.
+  create: true
+  # -- Annotations to add to the ServiceAccount (e.g. IRSA on AWS EKS).
+  annotations: {}
+  # -- Override the generated ServiceAccount name.
+  name: ""
+
+# -- Extra annotations added to every Pod.
+podAnnotations: {}
+
+# -- Pod-level security context. Sets filesystem ownership for mounted volumes.
+podSecurityContext:
+  fsGroup: 1000
+
+# -- Container-level security context. HedgeDoc's image runs as UID 1000 (hedgedoc user).
+# readOnlyRootFilesystem cannot be set to true because HedgeDoc writes runtime temp files.
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+
+# ─── Service ─────────────────────────────────────────────────────────────────
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# ─── Networking ───────────────────────────────────────────────────────────────
+
+# -- Standard Kubernetes Ingress (networking.k8s.io/v1).
+ingress:
+  enabled: false
+  # -- IngressClass name (e.g. "nginx", "traefik"). Leave empty to use cluster default.
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: hedgedoc.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # - secretName: hedgedoc-tls
+  #   hosts:
+  #     - hedgedoc.example.com
+
+# -- Gateway API HTTPRoute (gateway.networking.k8s.io/v1) for Istio / Envoy Gateway.
+# Can be used alongside or instead of the standard Ingress.
+gatewayApi:
+  enabled: false
+  # -- Hostname the HTTPRoute should accept traffic for.
+  hostname: hedgedoc.example.com
+  # -- parentRefs pointing at the Gateway resource this route attaches to.
+  parentRefs:
+    - name: main-gateway
+      namespace: istio-system
+      group: gateway.networking.k8s.io
+      kind: Gateway
+
+# ─── Persistence ─────────────────────────────────────────────────────────────
+
+# -- PersistentVolumeClaim for /hedgedoc/public/uploads.
+# Automatically disabled when extraEnv.CMD_IMAGE_UPLOAD_TYPE is "s3".
+persistence:
+  enabled: true
+  # -- StorageClass name. Leave empty to use the cluster default.
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+
+# ─── Resources & Probes ───────────────────────────────────────────────────────
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# -- Liveness probe: restarts the container if HedgeDoc's /status becomes unhealthy.
+livenessProbe:
+  httpGet:
+    path: /status
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 15
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+# -- Readiness probe: removes the pod from Service endpoints until /status is healthy.
+readinessProbe:
+  httpGet:
+    path: /status
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+# -- Startup probe: allows up to 5 minutes (30 × 10 s) for the initial cold start
+# before the liveness probe takes over. Particularly useful when the database
+# is also starting up simultaneously.
+startupProbe:
+  httpGet:
+    path: /status
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 30
+
+# ─── Database ────────────────────────────────────────────────────────────────
+
+# -- Bitnami PostgreSQL sub-chart. See:
+# https://artifacthub.io/packages/helm/bitnami/postgresql for all options.
+postgresql:
+  enabled: true
+  auth:
+    # -- Database username for HedgeDoc.
+    username: hedgedoc
+    # -- Database password. REQUIRED when not using auth.existingSecret AND
+    # the top-level existingSecret is not set. Must not be empty.
+    # Tip: avoid characters with URL significance (@, /, :, ?) — or use existingSecret.
+    password: ""
+    # -- Database name.
+    database: hedgedoc
+    # -- Reference an existing Kubernetes Secret for PostgreSQL credentials.
+    # When set, you MUST also set the top-level existingSecret so that
+    # CMD_DB_URL is provided directly (the password cannot be auto-resolved
+    # from a third-party secret at Helm render time).
+    existingSecret: ""
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# -- External PostgreSQL configuration. Used when postgresql.enabled is false.
+externalDatabase:
+  # -- Hostname or FQDN of the external PostgreSQL server. Required.
+  host: ""
+  port: 5432
+  username: hedgedoc
+  database: hedgedoc
+  # -- Password for the external database. Required when top-level existingSecret is not set.
+  password: ""
+
+# ─── Secret & ConfigMap Management ───────────────────────────────────────────
+
+# -- Name of an existing Secret to use instead of creating one.
+# The Secret MUST contain:
+#   CMD_DB_URL       — full PostgreSQL connection URL
+#   CMD_SESSION_SECRET — random session signing key (≥ 32 chars recommended)
+# Optional additional keys:
+#   CMD_S3_ACCESS_KEY_ID, CMD_S3_SECRET_ACCESS_KEY, and any OAuth/LDAP secrets.
+# Use this with SealedSecrets, ExternalSecrets Operator, or Vault Agent Injector.
+existingSecret: ""
+
+# -- Session signing secret for HedgeDoc.
+# If empty: a random 64-char string is generated on first install and preserved
+# across upgrades via Kubernetes Secret lookup (stable without requiring the value
+# to be stored in values.yaml long-term).
+sessionSecret: ""
+
+# -- Name of an existing ConfigMap to use instead of creating one.
+# The ConfigMap must expose all required CMD_* environment variables.
+# Use this for GitOps workflows where config is managed externally.
+existingConfigMap: ""
+
+# ─── S3 / Compatible Object Storage Credentials (sensitive) ──────────────────
+
+# -- S3-compatible storage credentials injected into the Secret.
+# When extraEnv.CMD_IMAGE_UPLOAD_TYPE is "s3", the PersistentVolumeClaim for
+# /hedgedoc/public/uploads is automatically disabled.
+s3:
+  accessKeyId: ""
+  secretAccessKey: ""
+
+# ─── Non-Sensitive Configuration (CMD_* → ConfigMap) ─────────────────────────
+
+# -- Non-sensitive environment variables rendered into a ConfigMap and injected
+# into the pod via envFrom.configMapRef.
+# See https://docs.hedgedoc.org/configuration/ for the full variable reference.
+extraEnv:
+  # ── Network & URL ──────────────────────────────────────────────────────────
+  # Public domain (without protocol or port). Must match the URL users access.
+  CMD_DOMAIN: "hedgedoc.example.com"
+  # URL sub-path when HedgeDoc is served behind a reverse proxy at a sub-path.
+  CMD_URL_PATH: ""
+  # Port HedgeDoc listens on inside the container.
+  CMD_PORT: "3000"
+  # Set to "true" if TLS is terminated at the ingress/proxy (behind HTTPS).
+  CMD_PROTOCOL_USESSL: "false"
+  # Comma-separated allowed CORS origins. Empty = restrict to same origin.
+  CMD_ALLOW_ORIGIN: ""
+
+  # ── Security & Session ─────────────────────────────────────────────────────
+  # Enable HTTP Strict-Transport-Security header.
+  CMD_HSTS_ENABLE: "true"
+  # HSTS max-age in seconds (default: 1 year).
+  CMD_HSTS_MAX_AGE: "31536000"
+  # SameSite cookie policy: "strict", "lax", or "none".
+  CMD_COOKIE_POLICY: "lax"
+  # Enable Content-Security-Policy header.
+  CMD_CSP_ENABLE: "true"
+
+  # ── Features & Behaviour ───────────────────────────────────────────────────
+  # Allow unauthenticated (guest) users to view notes.
+  CMD_ALLOW_ANONYMOUS: "true"
+  # Allow unauthenticated users to edit existing notes (requires CMD_ALLOW_ANONYMOUS).
+  CMD_ALLOW_ANONYMOUS_EDITS: "false"
+  # Allow users to create notes at arbitrary custom URLs.
+  CMD_ALLOW_FREEURL: "false"
+  # Default permission for newly created notes.
+  # Values: "freely", "editable", "limited", "locked", "protected", "private".
+  CMD_DEFAULT_PERMISSION: "editable"
+  # Comma-separated note IDs that are reserved and cannot be created by users.
+  CMD_FORBIDDEN_NOTE_IDS: "robots.txt,favicon.ico,apple-touch-icon.png"
+  # Default title inserted into the YAML front matter of new notes.
+  CMD_DEFAULT_NOTE_TITLE: "Untitled"
+  # Maximum note length in characters.
+  CMD_MAX_LENGTH: "100000"
+  # Disable Git version history for notes.
+  CMD_GIT_DISABLED: "true"
+
+  # ── Uploads (non-sensitive) ────────────────────────────────────────────────
+  # Upload storage backend: "filesystem", "s3", "azure", "imgur", "lutim", "minio".
+  # When set to "s3", the PVC for /hedgedoc/public/uploads is auto-disabled.
+  CMD_IMAGE_UPLOAD_TYPE: "filesystem"
+  # S3 bucket name (non-sensitive; credentials are in the Secret via s3.*).
+  CMD_S3_BUCKET: ""
+  # AWS region or equivalent for S3-compatible stores.
+  CMD_S3_REGION: ""
+  # Custom S3 endpoint URL (leave empty for AWS S3).
+  CMD_S3_ENDPOINT: ""
+
+  # ── Authentication (non-sensitive) ─────────────────────────────────────────
+  # Enable email/password sign-in.
+  CMD_EMAIL: "true"
+  # Allow new users to self-register via email sign-up.
+  CMD_ALLOW_EMAIL_REGISTER: "true"
+
+  # ── Logging ────────────────────────────────────────────────────────────────
+  # Log verbosity: "debug", "verbose", "info", "warn", "error".
+  CMD_LOGLEVEL: "info"
+
+# -- Additional raw environment variables appended directly to the container spec.
+# Use for one-off variables not covered by extraEnv or when referencing secrets
+# via secretKeyRef / configMapKeyRef.
+env: []
+# - name: MY_CUSTOM_VAR
+#   value: "value"
+# - name: SOME_SECRET
+#   valueFrom:
+#     secretKeyRef:
+#       name: my-secret
+#       key: my-key
+
+# ─── Scheduling ───────────────────────────────────────────────────────────────
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

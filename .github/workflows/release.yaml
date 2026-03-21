@@ -1,0 +1,291 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI/CD pipeline for the hedgedoc Helm chart.
+#
+# Jobs (run in sequence, each depends on the previous):
+#   lint    → helm lint --strict + helm template dry-run
+#   test    → kind cluster + helm install --wait (real deployment smoke test)
+#   release → helm package + OCI push to GHCR (only on main, after lint+test)
+#
+# Trigger:
+#   • All branches/PRs: lint + test
+#   • Push to main (charts/** or this workflow): lint + test + release
+#
+# Required permissions (GITHUB_TOKEN):
+#   packages: write  — push OCI artifact (release job only)
+#   contents: read   — checkout
+# ─────────────────────────────────────────────────────────────────────────────
+name: CI / Release Helm Chart (OCI)
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "charts/**"
+      - ".github/workflows/release.yaml"
+  pull_request:
+    paths:
+      - "charts/**"
+      - ".github/workflows/release.yaml"
+
+# Restrict default token permissions to least privilege.
+permissions:
+  contents: read
+  packages: write
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reusable composite: checkout + Helm toolchain + bitnami repo + dep update.
+# Defined once, referenced by all three jobs via a shared "setup" step group.
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  JOB 1 – LINT                                                           ║
+  # ║  Static validation: helm lint + helm template dry-run.                  ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Add Bitnami repository
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
+      - name: Update chart dependencies
+        run: helm dependency update charts/hedgedoc
+
+      # helm lint catches YAML errors, missing required values, schema violations.
+      - name: Lint chart (strict mode)
+        run: helm lint charts/hedgedoc --strict
+
+      # helm template ensures every template renders without errors using the
+      # default values. Uses --generate-name to avoid requiring a release name.
+      - name: Dry-run template rendering
+        run: |
+          helm template hedgedoc charts/hedgedoc \
+            --set postgresql.auth.password="ci-lint-password" \
+            --debug \
+            > /dev/null
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  JOB 2 – TEST                                                           ║
+  # ║  Smoke test: spin up a real kind cluster, helm install --wait.          ║
+  # ║  Validates: manifests apply cleanly, pods reach Running/Ready state,    ║
+  # ║  startup/readiness/liveness probes pass.                                ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+  test:
+    name: Test deployment (kind)
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      # kind (Kubernetes IN Docker) — creates a real single-node cluster
+      # inside the runner using Docker. No cloud credentials needed.
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: hedgedoc-ci
+          # Use a recent stable Kubernetes version.
+          node_image: kindest/node:v1.30.0
+
+      - name: Add Bitnami repository
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
+      - name: Update chart dependencies
+        run: helm dependency update charts/hedgedoc
+
+      # ── Install ─────────────────────────────────────────────────────────────
+      # We install into a dedicated namespace with:
+      #   - Ingress and Gateway API disabled (no Ingress controller in kind)
+      #   - Internal PostgreSQL enabled (tests the sub-chart wiring)
+      #   - Reduced resource requests to fit inside the runner VM
+      #   - --wait: block until all pods are Running + Ready OR timeout
+      #   - --timeout: 5 minutes should be enough for PostgreSQL cold start
+      - name: Install chart into kind
+        run: |
+          kubectl create namespace hedgedoc-ci
+
+          helm install hedgedoc charts/hedgedoc \
+            --namespace hedgedoc-ci \
+            --wait \
+            --timeout 5m \
+            --set postgresql.auth.password="ci-test-password-9x" \
+            --set extraEnv.CMD_DOMAIN="localhost" \
+            --set extraEnv.CMD_PROTOCOL_USESSL="false" \
+            --set ingress.enabled=false \
+            --set gatewayApi.enabled=false \
+            --set resources.requests.cpu=50m \
+            --set resources.requests.memory=128Mi \
+            --set resources.limits.cpu=500m \
+            --set resources.limits.memory=512Mi \
+            --set postgresql.primary.resources.requests.cpu=50m \
+            --set postgresql.primary.resources.requests.memory=128Mi
+
+      # ── Post-install verification ────────────────────────────────────────────
+      - name: Verify all pods are Running
+        run: |
+          echo "=== Pods ==="
+          kubectl get pods -n hedgedoc-ci -o wide
+
+          echo "=== Deployments ==="
+          kubectl get deployments -n hedgedoc-ci
+
+          # Fail explicitly if any pod is not Running.
+          NOT_RUNNING=$(kubectl get pods -n hedgedoc-ci \
+            --field-selector='status.phase!=Running' \
+            --no-headers 2>/dev/null | grep -v "Completed" || true)
+
+          if [[ -n "${NOT_RUNNING}" ]]; then
+            echo "ERROR: The following pods are not Running:"
+            echo "${NOT_RUNNING}"
+            echo ""
+            echo "=== Failing pod logs ==="
+            kubectl logs -n hedgedoc-ci -l app.kubernetes.io/name=hedgedoc \
+              --tail=50 || true
+            exit 1
+          fi
+
+          echo "✔  All pods are Running."
+
+      - name: Verify HedgeDoc /status endpoint responds
+        run: |
+          # Port-forward in background, wait for it to be ready, curl /status.
+          kubectl port-forward -n hedgedoc-ci svc/hedgedoc 3000:3000 &
+          PF_PID=$!
+          trap "kill ${PF_PID} 2>/dev/null || true" EXIT
+
+          echo "Waiting for port-forward to be ready..."
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3000/status > /dev/null 2>&1; then
+              echo "✔  /status responded successfully."
+              break
+            fi
+            sleep 3
+          done
+
+          # Final check — fail if /status is still not reachable.
+          curl -sf http://localhost:3000/status || {
+            echo "ERROR: /status did not respond after 60 s."
+            kubectl logs -n hedgedoc-ci -l app.kubernetes.io/name=hedgedoc \
+              --tail=100 || true
+            exit 1
+          }
+
+      # ── Cleanup (always runs, even on failure) ───────────────────────────────
+      - name: Collect debug info on failure
+        if: failure()
+        run: |
+          echo "=== All resources in hedgedoc-ci ==="
+          kubectl get all -n hedgedoc-ci || true
+
+          echo "=== HedgeDoc pod logs ==="
+          kubectl logs -n hedgedoc-ci -l app.kubernetes.io/name=hedgedoc \
+            --tail=100 || true
+
+          echo "=== PostgreSQL pod logs ==="
+          kubectl logs -n hedgedoc-ci -l app.kubernetes.io/name=postgresql \
+            --tail=50 || true
+
+          echo "=== Events ==="
+          kubectl get events -n hedgedoc-ci --sort-by='.lastTimestamp' || true
+
+      - name: Uninstall chart
+        if: always()
+        run: helm uninstall hedgedoc --namespace hedgedoc-ci --ignore-not-found || true
+
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  JOB 3 – RELEASE                                                        ║
+  # ║  Package and push OCI artifact to GHCR.                                 ║
+  # ║  Runs ONLY on pushes to main (not on PRs or feature branches).          ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+  release:
+    name: Release (OCI → GHCR)
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    # Guard: only publish from the main branch, never from PRs.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Add Bitnami repository
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
+      - name: Update chart dependencies
+        run: helm dependency update charts/hedgedoc
+
+      # ── Extract metadata ─────────────────────────────────────────────────────
+      - name: Read chart metadata
+        id: chart
+        run: |
+          CHART_VERSION=$(grep '^version:' charts/hedgedoc/Chart.yaml | awk '{print $2}')
+          APP_VERSION=$(grep '^appVersion:' charts/hedgedoc/Chart.yaml \
+            | awk '{print $2}' | tr -d '"')
+          echo "version=${CHART_VERSION}"     >> "$GITHUB_OUTPUT"
+          echo "app_version=${APP_VERSION}"   >> "$GITHUB_OUTPUT"
+          echo "Chart version : ${CHART_VERSION}"
+          echo "App version   : ${APP_VERSION}"
+
+      # ── Login ────────────────────────────────────────────────────────────────
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin
+
+      # ── Package ──────────────────────────────────────────────────────────────
+      - name: Package Helm chart
+        run: |
+          mkdir -p /tmp/charts
+          helm package charts/hedgedoc \
+            --version "${{ steps.chart.outputs.version }}" \
+            --app-version "${{ steps.chart.outputs.app_version }}" \
+            --destination /tmp/charts
+          echo "Packaged: /tmp/charts/hedgedoc-${{ steps.chart.outputs.version }}.tgz"
+
+      # ── Push OCI ─────────────────────────────────────────────────────────────
+      - name: Push chart to GHCR (OCI)
+        run: |
+          helm push \
+            /tmp/charts/hedgedoc-${{ steps.chart.outputs.version }}.tgz \
+            oci://ghcr.io/${{ github.repository_owner }}
+          echo "Published: oci://ghcr.io/${{ github.repository_owner }}/hedgedoc:${{ steps.chart.outputs.version }}"
+
+      # ── Cleanup ──────────────────────────────────────────────────────────────
+      - name: Log out from GHCR
+        if: always()
+        run: helm registry logout ghcr.io

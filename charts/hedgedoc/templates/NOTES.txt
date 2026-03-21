@@ -1,0 +1,68 @@
+# File: hedgedoc-kubernetes/charts/hedgedoc/templates/NOTES.txt
+{{- $protocol := ternary "https" "http" (or .Values.ingress.tls (eq .Values.gatewayApi.enabled true)) -}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ HedgeDoc {{ .Chart.AppVersion }} — {{ .Release.Name }}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🟢 Access URL:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  {{ $protocol }}://{{ .host }}
+{{- end }}
+{{- else if .Values.gatewayApi.enabled }}
+  {{ $protocol }}://{{ .Values.gatewayApi.hostname }}
+{{- else }}
+  HedgeDoc is not exposed via Ingress or HTTPRoute.
+  To access it locally, run:
+
+    kubectl -n {{ .Release.Namespace }} port-forward \
+      svc/{{ include "hedgedoc.fullname" . }} 3000:{{ .Values.service.port }}
+
+  Then open: http://localhost:3000
+{{- end }}
+
+📦 Database:
+{{- if .Values.postgresql.enabled }}
+  Internal PostgreSQL (bitnami sub-chart)
+  Host : {{ include "hedgedoc.postgresql.host" . }}:5432
+  DB   : {{ .Values.postgresql.auth.database }}
+  User : {{ .Values.postgresql.auth.username }}
+{{- else }}
+  External PostgreSQL
+  Host : {{ .Values.externalDatabase.host }}:{{ .Values.externalDatabase.port }}
+  DB   : {{ .Values.externalDatabase.database }}
+  User : {{ .Values.externalDatabase.username }}
+{{- end }}
+
+🔒 Secret:
+{{- if .Values.existingSecret }}
+  Using existing Secret: {{ .Values.existingSecret }}
+{{- else }}
+  Managed Secret: {{ include "hedgedoc.fullname" . }}-secret
+  (annotated with helm.sh/resource-policy: keep — survives helm uninstall)
+{{- end }}
+
+🗂  ConfigMap:
+{{- if .Values.existingConfigMap }}
+  Using existing ConfigMap: {{ .Values.existingConfigMap }}
+{{- else }}
+  Managed ConfigMap: {{ include "hedgedoc.fullname" . }}-config
+{{- end }}
+
+💾 Persistent Storage:
+{{- $uploadType   := index .Values.extraEnv "CMD_IMAGE_UPLOAD_TYPE" | default "filesystem" }}
+{{- if eq $uploadType "s3" }}
+  S3 backend active — PVC for uploads is disabled.
+  Bucket : {{ index .Values.extraEnv "CMD_S3_BUCKET" }}
+  Region : {{ index .Values.extraEnv "CMD_S3_REGION" }}
+{{- else if .Values.persistence.enabled }}
+  PVC: {{ include "hedgedoc.fullname" . }}-uploads ({{ .Values.persistence.size }})
+  Mount: /hedgedoc/public/uploads
+{{- else }}
+  Persistence is disabled.
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Docs     : https://docs.hedgedoc.org
+Chart src: https://github.com/{{ .Release.Name }}/hedgedoc-kubernetes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
