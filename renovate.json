@@ -47,12 +47,23 @@
     },
 
     {
-      "_comment": "Keep bitnami/postgresql sub-chart updates separate and non-major by default.",
+      "_comment": "Keep bitnami/postgresql sub-chart updates separate and non-major by default. postUpgradeTasks regenerates Chart.lock so the pinned digest stays in sync with the new version.",
       "matchManagers": ["helmv3"],
       "matchPackageNames": ["postgresql"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "bitnami/postgresql sub-chart",
-      "automerge": false
+      "automerge": false,
+      "postUpgradeTasks": {
+        "commands": [
+          "helm repo add bitnami https://charts.bitnami.com/bitnami",
+          "helm repo update",
+          "helm dependency update charts/hedgedoc"
+        ],
+        "fileFilters": [
+          "charts/hedgedoc/Chart.lock"
+        ],
+        "executionMode": "branch"
+      }
     },
 
     {
