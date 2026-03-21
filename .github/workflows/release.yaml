@@ -137,6 +137,10 @@ jobs:
       #   - Reduced resource requests to fit inside the runner VM
       #   - --wait: block until all pods are Running + Ready OR timeout
       #   - --timeout: 5 minutes should be enough for PostgreSQL cold start
+      #
+      # postgresql.image.tag=latest: Bitnami no longer publishes versioned image
+      # tags to Docker Hub — only "latest" is available. This override is safe
+      # for the CI smoke test; production users supply their own values.
       - name: Install chart into kind
         run: |
           kubectl create namespace hedgedoc-ci
@@ -146,6 +150,7 @@ jobs:
             --wait \
             --timeout 5m \
             --set postgresql.auth.password="ci-test-password-9x" \
+            --set postgresql.image.tag="latest" \
             --set extraEnv.CMD_DOMAIN="localhost" \
             --set extraEnv.CMD_PROTOCOL_USESSL="false" \
             --set ingress.enabled=false \
