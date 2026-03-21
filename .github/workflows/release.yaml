@@ -40,8 +40,8 @@ permissions:
 jobs:
 
   # ╔══════════════════════════════════════════════════════════════════════════╗
-  # ║  JOB 1 – LINT                                                           ║
-  # ║  Static validation: helm lint + helm template dry-run.                  ║
+  # ║  JOB 1 – LINT                                                            ║
+  # ║  Static validation: helm lint + helm template dry-run.                   ║
   # ╚══════════════════════════════════════════════════════════════════════════╝
   lint:
     name: Lint
@@ -87,10 +87,10 @@ jobs:
             > /dev/null
 
   # ╔══════════════════════════════════════════════════════════════════════════╗
-  # ║  JOB 2 – TEST                                                           ║
-  # ║  Smoke test: spin up a real kind cluster, helm install --wait.          ║
-  # ║  Validates: manifests apply cleanly, pods reach Running/Ready state,    ║
-  # ║  startup/readiness/liveness probes pass.                                ║
+  # ║  JOB 2 – TEST                                                            ║
+  # ║  Smoke test: spin up a real kind cluster, helm install --wait.           ║
+  # ║  Validates: manifests apply cleanly, pods reach Running/Ready state,     ║
+  # ║  startup/readiness/liveness probes pass.                                 ║
   # ╚══════════════════════════════════════════════════════════════════════════╝
   test:
     name: Test deployment (kind)
@@ -235,9 +235,9 @@ jobs:
         run: helm uninstall hedgedoc --namespace hedgedoc-ci --ignore-not-found || true
 
   # ╔══════════════════════════════════════════════════════════════════════════╗
-  # ║  JOB 3 – RELEASE                                                        ║
-  # ║  Package and push OCI artifact to GHCR.                                 ║
-  # ║  Runs ONLY on pushes to main (not on PRs or feature branches).          ║
+  # ║  JOB 3 – RELEASE                                                         ║
+  # ║  Package and push OCI artifact to GHCR.                                  ║
+  # ║  Runs ONLY on pushes to main (not on PRs or feature branches).           ║
   # ╚══════════════════════════════════════════════════════════════════════════╝
   release:
     name: Release (OCI → GHCR)
