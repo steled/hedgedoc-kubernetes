@@ -64,11 +64,18 @@ jobs:
           helm repo update
 
       - name: Update chart dependencies
-        run: helm dependency update charts/hedgedoc
+        run: |
+          helm dependency update charts/hedgedoc
+          # helm lint requires extracted directories, not .tgz archives.
+          find charts/hedgedoc/charts -maxdepth 1 -name '*.tgz' | while read -r f; do
+            tar -xzf "${f}" -C "$(dirname "${f}")" && rm "${f}"
+          done
 
       # helm lint catches YAML errors, missing required values, schema violations.
       - name: Lint chart (strict mode)
-        run: helm lint charts/hedgedoc --strict
+        run: |
+          helm lint charts/hedgedoc --strict \
+            --set postgresql.auth.password="ci-lint-password"
 
       # helm template ensures every template renders without errors using the
       # default values. Uses --generate-name to avoid requiring a release name.
