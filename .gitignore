@@ -1,0 +1,3 @@
+# Helm dependency artifacts — fetched at build time via `helm dependency update`.
+# Chart.lock is committed to pin exact versions; the downloaded charts are not.
+charts/*/charts/
