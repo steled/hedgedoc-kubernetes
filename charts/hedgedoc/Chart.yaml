@@ -11,7 +11,7 @@ type: application
 version: 0.1.0
 
 # -- HedgeDoc application version. Mirrors image.tag in values.yaml.
-appVersion: "1.9.9"
+appVersion: "1.9.8"
 
 keywords:
   - hedgedoc
