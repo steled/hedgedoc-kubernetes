@@ -48,7 +48,7 @@ jobs:
             charts/hedgedoc/values.yaml \
             | grep 'tag:' \
             | awk '{print $2}' \
-            | tr -d '"'"'')
+            | tr -d '"')
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "Detected image tag: ${TAG}"
 
