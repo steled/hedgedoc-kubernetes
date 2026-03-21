@@ -7,7 +7,7 @@
   "prConcurrentLimit": 10,
   "prHourlyLimit": 10,
   "repositories": [
-    "steled/argocd-apps"
+    "steled/hedgedoc-kubernetes"
   ],
   "username": "cheeky-badger-bot"
 }
