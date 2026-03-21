@@ -8,10 +8,10 @@ description: >-
 type: application
 
 # -- Chart version. Bumped automatically by Renovate via bump-chart-version.sh.
-version: 0.1.0
+version: 0.1.1
 
 # -- HedgeDoc application version. Mirrors image.tag in values.yaml.
-appVersion: "1.9.8"
+appVersion: "1.10.7"
 
 keywords:
   - hedgedoc
