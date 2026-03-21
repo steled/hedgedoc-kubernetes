@@ -14,7 +14,7 @@
 #   packages: write  — push OCI artifact (release job only)
 #   contents: read   — checkout
 # ─────────────────────────────────────────────────────────────────────────────
-name: CI / Release Helm Chart (OCI)
+name: 🦾 CI / Release Helm Chart (OCI)
 
 on:
   push:
