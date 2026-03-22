@@ -80,10 +80,11 @@ jobs:
         with:
           version: v3.14.4
 
-      # ── Resolve sub-chart dependencies ───────────────────────────────────────
-      # chart-releaser calls `helm package` internally.  Helm requires all
-      # declared dependencies to be present in charts/hedgedoc/charts/ before
-      # packaging, so we fetch them explicitly here.
+      # ── Resolve chart dependencies ────────────────────────────────────────────
+      # chart-releaser-action calls `helm package` internally, which requires
+      # all declared sub-chart dependencies to be present in charts/hedgedoc/charts/.
+      # We register the Bitnami repo and run `helm dependency update` explicitly
+      # before the action so the postgresql sub-chart is available at package time.
       - name: Add Bitnami repository
         run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami
@@ -93,8 +94,9 @@ jobs:
         run: helm dependency update charts/hedgedoc
 
       # ── chart-releaser ────────────────────────────────────────────────────────
-      # 1. cr package  — runs `helm package` for every chart whose version does
-      #                  not yet have a matching git tag; output goes to .cr-release-packages/.
+      # 1. cr package  — for every chart whose version does not yet have a
+      #                  matching git tag: runs `helm package`; output goes to
+      #                  .cr-release-packages/.
       # 2. cr upload   — creates a GitHub Release per new version and attaches
       #                  the .tgz package as a release asset.
       # 3. cr index    — fetches all release assets, rebuilds index.yaml, and
