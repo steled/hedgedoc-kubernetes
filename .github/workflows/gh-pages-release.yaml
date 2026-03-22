@@ -98,6 +98,16 @@ jobs:
       - name: Update chart dependencies
         run: helm dependency update charts/hedgedoc
 
+      # .helmignore contains "*.tgz", which causes helm package (and helm's
+      # chart loader) to ignore sub-chart .tgz archives in charts/hedgedoc/charts/.
+      # Fix: extract each downloaded .tgz into its sibling directory and remove
+      # the archive — identical to what the lint and test jobs already do.
+      - name: Extract sub-chart archives
+        run: |
+          find charts/hedgedoc/charts -maxdepth 1 -name '*.tgz' | while read -r f; do
+            tar -xzf "${f}" -C "$(dirname "${f}")" && rm "${f}"
+          done
+
       - name: Package chart
         run: |
           mkdir -p .cr-release-packages
