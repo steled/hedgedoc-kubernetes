@@ -1,0 +1,112 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GitHub Pages Helm repository release pipeline.
+#
+# Uses helm/chart-releaser-action (cr) to:
+#   1. Detect new chart versions by comparing Chart.yaml version against
+#      existing git tags (idempotent — reruns are safe).
+#   2. Package each changed chart into a signed .tgz archive via `cr package`.
+#   3. Upload the .tgz as a binary asset to a versioned GitHub Release.
+#   4. Rebuild index.yaml and push it to the gh-pages branch, which GitHub
+#      Pages serves as the public Helm repository endpoint.
+#
+# Consumer usage (after GitHub Pages is enabled):
+#   helm repo add hedgedoc https://<owner>.github.io/<repo>
+#   helm repo update
+#   helm install hedgedoc hedgedoc/hedgedoc
+#
+# ── One-time setup (run locally, once per repository) ───────────────────────
+#   # 1. Create an orphan gh-pages branch:
+#   git checkout --orphan gh-pages
+#   git reset --hard
+#   git commit --allow-empty -m "chore: initialise gh-pages branch"
+#   git push origin gh-pages
+#   git checkout main
+#
+#   # 2. Enable GitHub Pages:
+#   #    Repo → Settings → Pages → Source: Deploy from branch → gh-pages / root
+#
+# ── Trigger ──────────────────────────────────────────────────────────────────
+#   • Push to main that touches charts/** or this workflow file.
+#   • chart-releaser skips versions that already have a git tag, so reruns on
+#     the same commit are safe and produce no duplicate releases.
+#
+# ── Required GITHUB_TOKEN permissions ────────────────────────────────────────
+#   contents: write  — create GitHub Releases and push index.yaml to gh-pages
+# ─────────────────────────────────────────────────────────────────────────────
+name: 📄 Release Helm Chart (GitHub Pages)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "charts/**"
+      - ".github/workflows/gh-pages-release.yaml"
+
+# Least-privilege: only the permissions this workflow actually needs.
+permissions:
+  contents: write  # create GitHub Releases + commit to gh-pages branch
+
+jobs:
+  # ╔══════════════════════════════════════════════════════════════════════════╗
+  # ║  JOB – RELEASE                                                           ║
+  # ║  Package chart versions not yet tagged, publish to the gh-pages          ║
+  # ║  Helm repository and create corresponding GitHub Releases.               ║
+  # ╚══════════════════════════════════════════════════════════════════════════╝
+  release:
+    name: Package & Publish to GitHub Pages
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────────
+      # fetch-depth: 0 is required so that cr can inspect all existing git tags
+      # to determine which chart versions have already been released.
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # ── Git identity ──────────────────────────────────────────────────────────
+      # cr commits index.yaml back to the gh-pages branch; a named identity is
+      # required for the commit to be accepted by GitHub.
+      - name: Configure Git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # ── Helm toolchain ────────────────────────────────────────────────────────
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      # ── Resolve sub-chart dependencies ───────────────────────────────────────
+      # chart-releaser calls `helm package` internally.  Helm requires all
+      # declared dependencies to be present in charts/hedgedoc/charts/ before
+      # packaging, so we fetch them explicitly here.
+      - name: Add Bitnami repository
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
+      - name: Update chart dependencies
+        run: helm dependency update charts/hedgedoc
+
+      # ── chart-releaser ────────────────────────────────────────────────────────
+      # 1. cr package  — runs `helm package` for every chart whose version does
+      #                  not yet have a matching git tag; output goes to .cr-release-packages/.
+      # 2. cr upload   — creates a GitHub Release per new version and attaches
+      #                  the .tgz package as a release asset.
+      # 3. cr index    — fetches all release assets, rebuilds index.yaml, and
+      #                  force-pushes it to the gh-pages branch so Helm clients
+      #                  can discover the chart via `helm repo update`.
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.6.0
+        with:
+          # Directory that contains one sub-directory per chart (charts/hedgedoc).
+          charts_dir: charts
+          # Mark every new release as the latest release on GitHub.
+          mark_as_latest: true
+        env:
+          # GITHUB_TOKEN must have `contents: write` (set at workflow level).
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
