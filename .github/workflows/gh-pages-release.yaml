@@ -81,10 +81,15 @@ jobs:
           version: v3.14.4
 
       # ── Resolve chart dependencies ────────────────────────────────────────────
-      # chart-releaser-action calls `helm package` internally, which requires
-      # all declared sub-chart dependencies to be present in charts/hedgedoc/charts/.
-      # We register the Bitnami repo and run `helm dependency update` explicitly
-      # before the action so the postgresql sub-chart is available at package time.
+      # chart-releaser-action v1.6.x calls `cr package` → `helm package` in an
+      # isolated step that is unaware of locally-fetched sub-chart archives.
+      # Because charts/*/charts/ is gitignored the directory does not exist
+      # after a clean checkout, so `helm package` would fail with
+      # "found in Chart.yaml, but missing in charts/ directory: postgresql".
+      #
+      # Fix: run `helm dependency update` and `helm package` ourselves into
+      # .cr-release-packages/ and tell chart-releaser-action to skip packaging
+      # (skip_packaging: true) so it only handles upload + index-update.
       - name: Add Bitnami repository
         run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami
@@ -93,22 +98,24 @@ jobs:
       - name: Update chart dependencies
         run: helm dependency update charts/hedgedoc
 
-      # ── chart-releaser ────────────────────────────────────────────────────────
-      # 1. cr package  — for every chart whose version does not yet have a
-      #                  matching git tag: runs `helm package`; output goes to
-      #                  .cr-release-packages/.
-      # 2. cr upload   — creates a GitHub Release per new version and attaches
-      #                  the .tgz package as a release asset.
-      # 3. cr index    — fetches all release assets, rebuilds index.yaml, and
-      #                  force-pushes it to the gh-pages branch so Helm clients
-      #                  can discover the chart via `helm repo update`.
-      - name: Run chart-releaser
+      - name: Package chart
+        run: |
+          mkdir -p .cr-release-packages
+          helm package charts/hedgedoc --destination .cr-release-packages/
+
+      # ── chart-releaser (upload + index only) ─────────────────────────────────
+      # skip_packaging: true — we already packaged above with resolved deps.
+      # skip_existing:  true — idempotent: re-runs won't fail if the release
+      #                        asset already exists on GitHub.
+      # cr upload  — creates a GitHub Release per package and attaches the .tgz.
+      # cr index   — rebuilds index.yaml from all release assets and pushes to
+      #              the gh-pages branch so `helm repo update` picks it up.
+      - name: Run chart-releaser (upload + index)
         uses: helm/chart-releaser-action@v1.6.0
         with:
-          # Directory that contains one sub-directory per chart (charts/hedgedoc).
           charts_dir: charts
-          # Mark every new release as the latest release on GitHub.
+          skip_packaging: true
+          skip_existing: true
           mark_as_latest: true
         env:
-          # GITHUB_TOKEN must have `contents: write` (set at workflow level).
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
