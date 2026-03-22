@@ -108,24 +108,16 @@ jobs:
             tar -xzf "${f}" -C "$(dirname "${f}")" && rm "${f}"
           done
 
-      - name: Package chart
-        run: |
-          mkdir -p .cr-release-packages
-          helm package charts/hedgedoc --destination .cr-release-packages/
-
-      # ── chart-releaser (upload + index only) ─────────────────────────────────
-      # skip_packaging: true — we already packaged above with resolved deps.
-      # skip_existing:  true — idempotent: re-runs won't fail if the release
-      #                        asset already exists on GitHub.
-      # cr upload  — creates a GitHub Release per package and attaches the .tgz.
-      # cr index   — rebuilds index.yaml from all release assets and pushes to
-      #              the gh-pages branch so `helm repo update` picks it up.
-      - name: Run chart-releaser (upload + index)
+      # ── chart-releaser ────────────────────────────────────────────────────────
+      # Deps are present as extracted directories (not .tgz) so `helm package`
+      # inside cr succeeds despite "*.tgz" being listed in .helmignore.
+      # 1. cr package  — detects charts changed since last tag, runs helm package.
+      # 2. cr upload   — creates a GitHub Release per version + attaches the .tgz.
+      # 3. cr index    — rebuilds index.yaml and pushes it to the gh-pages branch.
+      - name: Run chart-releaser
         uses: helm/chart-releaser-action@v1.6.0
         with:
           charts_dir: charts
-          skip_packaging: true
-          skip_existing: true
           mark_as_latest: true
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
