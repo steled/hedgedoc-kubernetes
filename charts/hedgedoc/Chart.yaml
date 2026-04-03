@@ -30,6 +30,6 @@ maintainers:
 
 dependencies:
   - name: postgresql
-    version: "18.5.11"
+    version: "18.5.15"
     repository: https://charts.bitnami.com/bitnami
     condition: postgresql.enabled
