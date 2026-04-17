@@ -2,6 +2,35 @@ apiVersion: v1
 entries:
   hedgedoc:
   - apiVersion: v2
+    appVersion: 1.10.8
+    created: "2026-04-17T02:45:33.346970591Z"
+    dependencies:
+    - condition: postgresql.enabled
+      name: postgresql
+      repository: https://charts.bitnami.com/bitnami
+      version: 18.5.15
+    description: A Helm chart for HedgeDoc — the open platform for real-time collaborative
+      markdown notes. Supports PostgreSQL (internal or external), S3-compatible uploads,
+      standard Ingress and Gateway API (Istio/Gateway API) networking.
+    digest: 9a0b63b3a6487acb7785231016c237198aed87b2e880be39c7dd71dfeac67bcf
+    home: https://hedgedoc.org
+    icon: https://docs.hedgedoc.org/images/hedgedoc_logo.svg
+    keywords:
+    - hedgedoc
+    - markdown
+    - collaborative
+    - notes
+    - wiki
+    maintainers:
+    - name: hedgedoc-kubernetes
+    name: hedgedoc
+    sources:
+    - https://github.com/hedgedoc/hedgedoc
+    type: application
+    urls:
+    - https://github.com/steled/hedgedoc-kubernetes/releases/download/hedgedoc-0.1.2/hedgedoc-0.1.2.tgz
+    version: 0.1.2
+  - apiVersion: v2
     appVersion: 1.10.7
     created: "2026-03-22T15:11:28.972575719Z"
     dependencies:
@@ -30,4 +59,4 @@ entries:
     urls:
     - https://github.com/steled/hedgedoc-kubernetes/releases/download/hedgedoc-0.1.1/hedgedoc-0.1.1.tgz
     version: 0.1.1
-generated: "2026-03-22T15:11:28.972585808Z"
+generated: "2026-04-17T02:45:33.346978606Z"
