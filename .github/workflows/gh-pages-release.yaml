@@ -78,7 +78,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v5
         with:
-          version: v3.14.4
+          version: v3.21.0
 
       # ── Resolve chart dependencies ────────────────────────────────────────────
       # chart-releaser-action v1.6.x calls `cr package` → `helm package` in an
