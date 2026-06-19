@@ -62,7 +62,7 @@ jobs:
       # fetch-depth: 0 is required so that cr can inspect all existing git tags
       # to determine which chart versions have already been released.
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
