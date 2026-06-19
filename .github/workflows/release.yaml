@@ -56,7 +56,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v5
         with:
-          version: v3.14.4
+          version: v4.2.2
 
       - name: Add Bitnami repository
         run: |
@@ -106,7 +106,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v5
         with:
-          version: v3.14.4
+          version: v4.2.2
 
       # kind (Kubernetes IN Docker) — creates a real single-node cluster
       # inside the runner using Docker. No cloud credentials needed.
@@ -255,7 +255,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v5
         with:
-          version: v3.14.4
+          version: v4.2.2
 
       - name: Add Bitnami repository
         run: |
