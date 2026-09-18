@@ -115,7 +115,7 @@ jobs:
         with:
           cluster_name: hedgedoc-ci
           # Use a recent stable Kubernetes version.
-          node_image: kindest/node:v1.30.0
+          node_image: kindest/node:v1.30.13
 
       - name: Add Bitnami repository
         run: |
